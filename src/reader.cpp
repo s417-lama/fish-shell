@@ -309,6 +309,7 @@ static volatile sig_atomic_t interrupted = 0;
 
 // Prototypes for a bunch of functions defined later on.
 static bool is_backslashed(const wcstring &str, size_t pos);
+static bool ends_with_pipe(const wcstring &str, size_t pos);
 static wchar_t unescaped_quote(const wcstring &str, size_t pos);
 
 /// Mode on startup, which we restore on exit.
@@ -2310,6 +2311,20 @@ static bool is_backslashed(const wcstring &str, size_t pos) {
     return (count % 2) == 1;
 }
 
+/// Test if the specified character in the specified string ends with pipe.
+/// Whitespaces at the end are ignored. It returns false if backslashed before the pipe
+/// because it should be treated as an escaped character.
+static bool ends_with_pipe(const wcstring &str, size_t pos) {
+    if (pos > str.size()) return false;
+
+    while (pos--) {
+        wchar_t c = str.at(pos);
+        if (c == L'|') return !is_backslashed(str, pos);
+        if (c != L' ') break;
+    }
+    return false;
+}
+
 static wchar_t unescaped_quote(const wcstring &str, size_t pos) {
     wchar_t result = L'\0';
     if (pos < str.size()) {
@@ -2729,7 +2744,10 @@ const wchar_t *reader_readline(int nchars) {
                 // Allow backslash-escaped newlines, but only if the following character is
                 // whitespace, or we're at the end of the text (see issue #613) and not in a comment
                 // (issue #1255).
-                if (is_backslashed(el->text, el->position)) {
+                // In addition to that, a newline is inserted if the line ends with a pipe
+                // (issue #1285).
+                if (is_backslashed(el->text, el->position) ||
+                    ends_with_pipe(el->text, el->position)) {
                     bool continue_on_next_line = false;
                     if (el->position >= el->size()) {
                         continue_on_next_line = !text_ends_in_comment(el->text);
